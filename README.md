@@ -68,12 +68,11 @@ Endpoint generateActivationToken nhận đầu vào là 1 biến `connectorId`, 
 `clientId` luôn tồn tại những giá trị mặc định đều có scope là `system admin` như
 - acs
 - Service_OAuth2Client
-- Configurator_OAuthClient
 - casOauth2Client
 
 ![](./img/2.png)
 
-&rarr; Có thể lấy được token của `system admin` mà không cần bất kì quyền nào
+&rarr; <mark>Có thể lấy được token của `system admin` mà không cần bất kì quyền nào</mark>
 
 Token đăng nhập được encode, lưu giá trị vào bảng `ActivationToken` 
 ![](./img/token_decode.png)
