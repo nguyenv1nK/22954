@@ -42,7 +42,7 @@ apply_workaround(saas_web_xml, oauth2_security_constraint)
 ```
 Dựa vào tên của lỗi (OAuth2 ACS Authentication Bypass), có thể đây là cách để khắc phục và endpoint `/API/1.0/REST/oauth2/generateActivationToken/*` có liên quan đến quá trình khai thác.
 
-Kiểm tra source code của endpoint này tại package `package com.vmware.horizon.connector.management.rest.resource.connector` class `ConnectorResource`
+Kiểm tra source code của endpoint này tại package `com.vmware.horizon.connector.management.rest.resource.connector` class `ConnectorResource`
 ```java
 @POST
 @Produces({"application/vnd.vmware.horizon.manager.connector.management.connectorActivationToken+json"})
@@ -61,19 +61,56 @@ public Response generateActivationToken(@PathParam("id") UUID connectorId)
   String activationToken;
   ConnectorActivationToken connectorActivationToken = new ConnectorActivationToken(activationToken);
   return Response.ok(connectorActivationToken).build();
-}
+}  
 ```
 Endpoint generateActivationToken nhận đầu vào là 1 biến `connectorId`, kiểm tra trong database xem có `clientId` nào trùng giá trị hay không. Nếu có sẽ trả về token đăng nhập
-![](img/1.png)
-`clientId` luôn có những giá trị mặc định như
+![](./img/1.png)
+`clientId` luôn tồn tại những giá trị mặc định đều có scope là `system admin` như
 - acs
 - Service_OAuth2Client
 - Configurator_OAuthClient
-- 
-![](img/2.png)
+- casOauth2Client
 
+![](./img/2.png)
+
+&rarr; Có thể lấy được token của `system admin` mà không cần bất kì quyền nào
+
+Token đăng nhập được encode, lưu giá trị vào bảng `ActivationToken` 
+![](./img/token_decode.png)
+![](./img/ActiveTokenTable.png)
+
+Token sau khi được tạo sẽ được gửi tới endpoint `/API/1.0/REST/oauth2/generateActivationToken/active`. Endpoint này kiểm tra token hợp lệ bằng cách so sánh với giá trị trong bảng `ActivationToken`, nếu hợp lệ sẽ trả về user và password
+
+```java
+@POST
+@ResponseStatus(HttpStatus.OK)
+@Path("/activate")
+@Consumes({"application/vnd.vmware.horizon.manager.connector.management.connectorinstance+json"})
+@Produces({"application/vnd.vmware.horizon.manager.connector.management.connector+json"})
+@TypeHint(ConnectorOAuth2ClientDetails.class)
+public Response activateConnectorAgainstInstance(@PathParam("id") UUID connectorId, @Nonnull ConnectorInstance connectorInstance) {
+    String suiteToken = this.frontEndService.getValidatedSuiteTokenStringFromRequest(this.request);
+    String activationTokenUrl = this.urlBuilder.buildServerUrl(this.request, this.getOrgName().toLowerCase(), "/");
+    String connectorInstanceId = connectorInstance.getConnectorInstanceTO().getInstanceId();
+
+    try {
+        ConnectorTO updatedConnector = this.connectorService.activateConnectorOnInstance(this.getOrgName(), suiteToken, connectorId, connectorInstanceId, activationTokenUrl);
+        return Response.ok(this.connectorsConverter.toConnector(updatedConnector, this.getOrgName())).build();
+    } catch (ConnectorActivationException var7) {
+        logger.error("Error activating connector uuid: " + connectorId + " instanceId: " + connectorInstanceId, var7);
+        throw new WebApplicationException(var7, Status.INTERNAL_SERVER_ERROR);
+    }
+}
+```
+![](./img/request_active.png)
+Response sẽ chứa `client_id` và `client_secret` đây là password đã được giải mã của user. User có thể sử dụng giá trị này để xác thực và lấy JWT
+![](./img/response_active.png)
 
 ## Exploit
+Trong thực tế, sau khi lấy được token từ endpoint `/API/1.0/REST/oauth2/generateActivationToken/*`, có thể cài đặt `Workspace ONE Access Connector` và sử dụng token để kết nối với `VMware Workspace ONE Access` 
+![](./img/connector.png)
 
-## REFERENCE LINKS
-
+## REFERENCE LINKS 
+- https://kb.vmware.com/s/article/88098
+- https://www.vmware.com/security/advisories/VMSA-2022-0011.html
+- https://docs.vmware.com/en/VMware-Workspace-ONE-Access/3.3/vidm-install.pdf
